@@ -11,12 +11,9 @@ def distance(target, source, error_offset=0, error_gain=0):
        dist_y ** 2 +
        dist_z ** 2
     ) ** 0.5
-    print(f"1 {dist = }")
     dist += (2 * random.random() - 1) * error_gain * dist
-    print(f"2 {dist = }")
     dist += (2 * random.random() - 1) * error_offset
-    print(f"3 {dist = }")
-    return dist
+    return abs(dist)
 
 
 def distance2d(target, source, error_offset=0, error_gain=0):

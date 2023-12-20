@@ -11,13 +11,13 @@ sys.path.insert(0, repo_dir)
 import remotes_coordinates
 from remotes_coordinates import utils
 
-EPS = 10e-1
+EPS = 1
 RES = utils.random_point(d=100)
 
-error_dist_offset = 2
-error_dist_gain = 0.05
+error_dist_offset = 0.5
+error_dist_gain = 0.01
 error_azimuth = 1
-error_inclinaison = 1
+error_inclinaison = 0.5
 
 print(RES)
 

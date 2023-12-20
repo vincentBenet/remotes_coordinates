@@ -1,9 +1,6 @@
-import itertools
-import sys
-
 import numpy
 import math
-from scipy.optimize import minimize as scipy_optimize_minimize
+from scipy.optimize import dual_annealing as minimize_func
 import matplotlib.pyplot as plt
 from . import utils
 
@@ -14,7 +11,7 @@ TYPE_RES = list[float, float, float]
 
 def minimize(
     points: TYPE_POINTS,
-    n:int = 3,
+    max_dist:int = 1000,
 ) -> TYPE_RES:
     """
     Take input points and measure to find the researched point.
@@ -22,6 +19,7 @@ def minimize(
         There is 3 fixed inputs for each point (X, Y, Z) and 3 measures (Distance, Azimuth, Inclinaison)
         The output is 3 values (X, Y, Z) of the target to find
     This function will guess the target coordinates based on the input points and measures
+    :param max_dist: Maximum distance of target from points
     :param points: array of points [x, y, z, d, a, i]
         x: Coordinate X in meter of the input point
         y: Coordinate Y in meter of the input point
@@ -35,48 +33,25 @@ def minimize(
             res_y: coordinates Y of target in meter
             res_y: coordinates Z of target in meter
     """
-    ress = []
     check_inputs(points)
-    xs, ys, zs, _, _, _ = points.T
-    if len(points) == 1:
-        x, y, z, d, a, i = points[0]
-        range_x = d
-        range_y = d
-        range_z = d
-    else:
-        range_x = numpy.max(xs) - numpy.min(xs)
-        range_y = numpy.max(ys) - numpy.min(ys)
-        range_z = numpy.max(zs) - numpy.min(zs)
-    mean_x = numpy.mean(xs)
-    mean_y = numpy.mean(ys)
-    mean_z = numpy.mean(zs)
-    lx = numpy.linspace(-1, 1, n)
-    ly = numpy.linspace(-1, 1, n)
-    lz = numpy.linspace(-1, 1, n)
-    min_score = sys.maxsize
-    for ratio_x, ratio_y, ratio_z in itertools.product(lx, ly, lz):
-        init = numpy.array([
-            mean_x + ratio_x * range_x * 0.51,
-            mean_y + ratio_y * range_y * 0.51,
-            mean_z + ratio_z * range_z * 0.51,
-        ])
-        # print(f"{init = }")
-        minimisation = scipy_optimize_minimize(
-            get_score,
-            init,
-            points,
-            method="L-BFGS-B",
-            tol=0,
-            options={
-                "gtol": 0,
-                "itol": 0,
-            }
-        )
-        res = minimisation.x
-        score = get_score(res, points)
-        if score <= min_score:
-            min_score = score
-            result_point = res
+    xs, ys, zs, ds, _, _ = points.T
+    bounds = [
+        [min(xs) - max_dist, max(xs) + max_dist],
+        [min(ys) - max_dist, max(ys) + max_dist],
+        [min(zs) - max_dist, max(zs) + max_dist],
+    ]
+    x0 = numpy.array([
+        numpy.median(xs),
+        numpy.median(ys),
+        numpy.median(zs)
+    ])
+    minimisation = minimize_func(
+        func=get_score,
+        bounds=bounds,
+        args=(points,),
+        x0=x0
+    )
+    result_point = minimisation.x
     return result_point
 
 
