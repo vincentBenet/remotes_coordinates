@@ -1,5 +1,7 @@
 import numpy
 import math
+import pyproj
+import geopandas
 from scipy.optimize import dual_annealing as minimize_func
 import matplotlib.pyplot as plt
 from . import utils
@@ -10,8 +12,8 @@ TYPE_RES = list[float, float, float]
 
 
 def minimize(
-    points: TYPE_POINTS,
-    max_dist:int = 1000,
+        points: TYPE_POINTS,
+        max_dist: int = 1000,
 ) -> TYPE_RES:
     """
     Take input points and measure to find the researched point.
@@ -33,7 +35,8 @@ def minimize(
             res_y: coordinates Y of target in meter
             res_y: coordinates Z of target in meter
     """
-    check_inputs(points)
+    points = check_inputs(points)
+    print(f"{points = }")
     xs, ys, zs, ds, _, _ = points.T
     bounds = [
         [min(xs) - max_dist, max(xs) + max_dist],
@@ -52,6 +55,9 @@ def minimize(
         x0=x0
     )
     result_point = minimisation.x
+    print("ERRORS:")
+    [print(f"\t{get_point_errors(result_point, point)[0]}") for point in points]
+
     return result_point
 
 
@@ -116,7 +122,6 @@ def get_score_point(p: TYPE_RES, point: TYPE_POINT) -> float:
     score_point = get_scores_point(p, point)
     for val in score_point.values():
         score += val
-    # print(f"{score = }")
     return score
 
 
@@ -138,21 +143,15 @@ def get_scores_point(p: TYPE_RES, point: TYPE_POINT) -> dict[str, float]:
     """
     scores = {}
     errors, attributes = get_point_errors(p, point)
-    # print("_" * 50)
-    # print(f"{point = }")
-    # print(f"{p = }")
-    # print(f"{attributes = }")
-    # print(f"{errors = }")
     if "inclinaison" in errors:
-        scores["inclinaison"] = errors["inclinaison"]**2
+        scores["inclinaison"] = errors["inclinaison"] ** 2
     if "distance" in errors:
-        scores["distance"] = errors["distance"]**2
+        scores["distance"] = errors["distance"] ** 2
     if "azimuth" in errors:
-        scores["azimuth"] = (errors["azimuth"])**2
+        scores["azimuth"] = (errors["azimuth"]) ** 2
     if attributes["distance"] < 1:
         for score, val in scores.items():
-            scores[score] = val / attributes["distance"]
-    # print(f"{scores = }")
+            scores[score] = val * attributes["distance"]
     return scores
 
 
@@ -185,10 +184,13 @@ def get_point_errors(p: TYPE_RES, point: TYPE_POINT) -> tuple[dict[str, float], 
     if has_d:
         errors["distance"] = attributes["distance"] - d
     if has_a:
-        errors["azimuth"] = attributes["azimuth"] - a
+        e = attributes["azimuth"] - a
+        if e > 180:
+            e = e - 360
+        errors["azimuth"] = e
     return errors, attributes
-    
-    
+
+
 def get_point_attributes(p: TYPE_RES, x: float, y: float, z: float) -> dict[str, float]:
     """
     Calcul
@@ -214,7 +216,7 @@ def display(points, result_point, eps=10e-2):
         gx, gy, z, d, azim, incl = point
         plt.plot([gx, gxr], [gy, gyr])
         plt.scatter([gx], [gy], color="red")
-        txt = f"Point {i+1} ({gx}, {gy}, {z})\n"
+        txt = f"Point {i + 1} ({gx}, {gy}, {z})\n"
         if d is not None:
             txt += f"Dist={round(d, 1)}\n"
         if azim is not None:
@@ -232,8 +234,7 @@ def display(points, result_point, eps=10e-2):
     plt.show()
 
 
-def check_inputs(points: TYPE_POINTS) -> None:
-    nb_var_total = 0
+def check_inputs(points: TYPE_POINTS) -> TYPE_POINTS:
     for iter_i, point in enumerate(points):
         nb_var = 0
         x, y, z, d, a, i = point
@@ -241,22 +242,42 @@ def check_inputs(points: TYPE_POINTS) -> None:
             raise Exception(f"Point {iter_i} : Coordinate X cannot be None")
         if y is None:
             raise Exception(f"Point {iter_i} : Coordinate Y cannot be None")
-        if z is None:
-            raise Exception(f"Point {iter_i} : Coordinate Z cannot be None, enter 0 insteed")
+        if z is None or math.isnan(z):
+            points[iter_i][2] = 0
+            points[iter_i][5] = 0
         if d is not None:
             nb_var += 1
             if d < 0:
                 raise Exception(f"Point {iter_i} : Negative distance: {d = }")
         if a is not None:
-            nb_var += 2
-            if a < 0 or a > 360:
-                raise Exception(f"Point {iter_i} : Azimuth over 0 and inferior to 360")
+            if math.isnan(a):
+                points[iter_i][4] = None
+            else:
+                nb_var += 2
+                if a < 0 or a > 360:
+                    raise Exception(f"Point {iter_i} : Azimuth over 0 and inferior to 360")
         if i is not None:
             nb_var += 1
             if i < -90 or i > 90:
                 raise Exception(f"Point {iter_i} : Inclinaison over -90 and inferior to 90")
         if nb_var == 0:
             raise Exception(f"Point {iter_i} : No measure to target entered")
-        nb_var_total += nb_var
-    # if nb_var_total < 3:
-    #     raise Exception(f"Not enough measures: {nb_var_total = }")
+    return points
+
+
+def load_file(path):
+    data = geopandas.read_file(path)
+    unit_name = data.crs.axis_info[0].unit_name
+    epsg_from = str(data.geometry.crs)
+    xs = data.geometry.x
+    ys = data.geometry.y
+    if unit_name != "meter":
+        xs, ys = pyproj.transform(
+            pyproj.Proj(epsg_from),
+            pyproj.Proj("EPSG:3857"),
+            ys, xs)
+    zs = data.geometry.z
+    distances = data["Distance"]
+    azimuths = data["Azimuth"]
+    inclinaisons = data["Inclinaison"]
+    return xs, ys, zs, distances, azimuths, inclinaisons
